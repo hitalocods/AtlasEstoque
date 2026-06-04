@@ -9,7 +9,9 @@ import {
   Plus,
   Printer,
   Search,
+  Truck,
   Trash2,
+  UserRound,
 } from "lucide-react";
 import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -26,19 +28,41 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate, money, number, sameDay } from "@/lib/format";
-import type { CompanySettings, InvoiceInfo, Product, ProductCategory, ProductUnit, Sale, SaleItem, StockMovement } from "@/types";
+import type {
+  CompanySettings,
+  Employee,
+  InvoiceInfo,
+  Product,
+  ProductCategory,
+  ProductUnit,
+  Sale,
+  SaleItem,
+  StockMovement,
+  Vehicle,
+  VehicleLoad,
+} from "@/types";
 
 type StoreProps = {
   products: Product[];
   sales: Sale[];
   movements: StockMovement[];
+  vehicles: Vehicle[];
+  employees: Employee[];
+  vehicleLoads: VehicleLoad[];
   lowStock: Product[];
   loading: boolean;
   firebaseEnabled: boolean;
   upsertProduct: (product: Omit<Product, "id" | "createdAt" | "updatedAt"> & { id?: string }) => Promise<void>;
   removeProduct: (productId: string) => Promise<void>;
   registerMovement: (productId: string, type: "entrada" | "saida" | "ajuste", quantity: number, note?: string) => Promise<void>;
-  finalizeSale: (items: SaleItem[], invoiceInfo: InvoiceInfo) => Promise<Sale | null>;
+  upsertVehicle: (vehicle: Omit<Vehicle, "id" | "createdAt" | "updatedAt"> & { id?: string }) => Promise<void>;
+  removeVehicle: (vehicleId: string) => Promise<void>;
+  upsertEmployee: (employee: Omit<Employee, "id" | "createdAt" | "updatedAt"> & { id?: string }) => Promise<void>;
+  removeEmployee: (employeeId: string) => Promise<void>;
+  assignVehicle: (vehicleId: string, employeeId: string) => Promise<void>;
+  createVehicleLoad: (input: { vehicleId: string; employeeId: string; saleId?: string; description: string }) => Promise<void>;
+  closeVehicleLoad: (loadId: string) => Promise<void>;
+  finalizeSale: (items: SaleItem[], invoiceInfo: InvoiceInfo, operation?: { vehicleId?: string; employeeId?: string }) => Promise<Sale | null>;
 };
 
 type CompanySettingsProps = {
@@ -98,7 +122,7 @@ export function DashboardPage({ products, sales, movements, lowStock, loading }:
         <StatCard title="Total de produtos" value={String(products.length)} detail="Itens cadastrados" />
         <StatCard title="Vendas do dia" value={money.format(todayTotal)} detail={`${todaySales.length} venda(s) hoje`} />
         <StatCard title="Estoque baixo" value={String(lowStock.length)} detail="Produtos no limite de alerta" />
-        <StatCard title="Notas emitidas" value={String(sales.length)} detail="Notas finalizadas" />
+        <StatCard title="Comprovantes" value={String(sales.length)} detail="Vendas finalizadas" />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
@@ -473,6 +497,9 @@ export function SalesPage({ products, finalizeSale, companySettings }: StoreProp
     phone: companySettings.phone,
     address: companySettings.address,
     client: "",
+    clientDocument: "",
+    clientPhone: "",
+    clientAddress: "",
     observations: "",
   });
   const total = items.reduce((sum, item) => sum + item.total, 0);
@@ -572,12 +599,12 @@ export function SalesPage({ products, finalizeSale, companySettings }: StoreProp
               </TableBody>
             </Table>
           </div>
-          {!items.length && <EmptyState title="Nota em aberto" description="Adicione produtos. O estoque só será baixado ao finalizar e imprimir." />}
+          {!items.length && <EmptyState title="Venda em aberto" description="Adicione produtos. O estoque só será baixado ao finalizar e imprimir." />}
         </CardContent>
       </Card>
 
       <Card className="border-[#dce3df] shadow-sm">
-        <CardHeader><CardTitle>Finalização da nota</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Finalizar comprovante</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           {([
             ["companyName", "Nome empresa"],
@@ -585,6 +612,9 @@ export function SalesPage({ products, finalizeSale, companySettings }: StoreProp
             ["phone", "Telefone"],
             ["address", "Endereço"],
             ["client", "Cliente"],
+            ["clientDocument", "CNPJ/CPF cliente"],
+            ["clientPhone", "Telefone cliente"],
+            ["clientAddress", "Endereço cliente"],
           ] as const).map(([key, label]) => (
             <div className="grid gap-2" key={key}>
               <Label>{label}</Label>
@@ -612,7 +642,7 @@ export function SalesPage({ products, finalizeSale, companySettings }: StoreProp
 export function NotesPage({ sales }: StoreProps) {
   return (
     <Card className="border-[#dce3df] shadow-sm">
-      <CardHeader><CardTitle>Notas emitidas</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Comprovantes emitidos</CardTitle></CardHeader>
       <CardContent className="overflow-x-auto">
         <Table>
           <TableHeader><TableRow><TableHead>Nota</TableHead><TableHead>Cliente</TableHead><TableHead>Data</TableHead><TableHead className="text-right">Total</TableHead><TableHead /></TableRow></TableHeader>
@@ -659,6 +689,215 @@ export function HistoryPage({ movements }: StoreProps) {
         </Table>
       </CardContent>
     </Card>
+  );
+}
+
+export function OperationPage({
+  vehicles,
+  employees,
+  sales,
+  vehicleLoads,
+  upsertVehicle,
+  removeVehicle,
+  upsertEmployee,
+  removeEmployee,
+  assignVehicle,
+  createVehicleLoad,
+  closeVehicleLoad,
+}: StoreProps) {
+  const [plate, setPlate] = useState("");
+  const [model, setModel] = useState("");
+  const [vehicleNotes, setVehicleNotes] = useState("");
+  const [employeeName, setEmployeeName] = useState("");
+  const [employeePhone, setEmployeePhone] = useState("");
+  const [employeeRole, setEmployeeRole] = useState("Motorista");
+  const [assignmentVehicleId, setAssignmentVehicleId] = useState("");
+  const [assignmentEmployeeId, setAssignmentEmployeeId] = useState("");
+  const [loadVehicleId, setLoadVehicleId] = useState("");
+  const [loadEmployeeId, setLoadEmployeeId] = useState("");
+  const [loadSaleId, setLoadSaleId] = useState("none");
+  const [loadDescription, setLoadDescription] = useState("");
+
+  async function submitVehicle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await upsertVehicle({
+      plate,
+      model,
+      notes: vehicleNotes,
+    });
+    setPlate("");
+    setModel("");
+    setVehicleNotes("");
+  }
+
+  async function submitEmployee(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await upsertEmployee({
+      name: employeeName,
+      phone: employeePhone,
+      role: employeeRole,
+      active: true,
+    });
+    setEmployeeName("");
+    setEmployeePhone("");
+    setEmployeeRole("Motorista");
+  }
+
+  async function submitAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!assignmentVehicleId || !assignmentEmployeeId) {
+      toast.error("Selecione veículo e funcionário.");
+      return;
+    }
+    await assignVehicle(assignmentVehicleId, assignmentEmployeeId);
+  }
+
+  async function submitLoad(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!loadVehicleId || !loadEmployeeId) {
+      toast.error("Selecione veículo e funcionário.");
+      return;
+    }
+    await createVehicleLoad({
+      vehicleId: loadVehicleId,
+      employeeId: loadEmployeeId,
+      saleId: loadSaleId === "none" ? undefined : loadSaleId,
+      description: loadDescription,
+    });
+    setLoadSaleId("none");
+    setLoadDescription("");
+  }
+
+  const openLoads = vehicleLoads.filter((load) => load.status === "aberta");
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Card className="border-[#dce3df] shadow-sm">
+          <CardHeader><CardTitle className="flex items-center gap-2"><Truck className="h-5 w-5" /> Veículos</CardTitle></CardHeader>
+          <CardContent className="space-y-5">
+            <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={submitVehicle}>
+              <Input placeholder="Placa" value={plate} onChange={(event) => setPlate(event.target.value)} />
+              <Input placeholder="Modelo" value={model} onChange={(event) => setModel(event.target.value)} />
+              <Button className="bg-[#0f2b2e] hover:bg-[#153a3d]">Cadastrar</Button>
+              <Textarea className="sm:col-span-3" placeholder="Observações do veículo" value={vehicleNotes} onChange={(event) => setVehicleNotes(event.target.value)} />
+            </form>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Placa</TableHead><TableHead>Modelo</TableHead><TableHead>Uso atual</TableHead><TableHead /></TableRow></TableHeader>
+                <TableBody>
+                  {vehicles.map((vehicle) => (
+                    <TableRow key={vehicle.id}>
+                      <TableCell className="font-medium">{vehicle.plate}</TableCell>
+                      <TableCell>{vehicle.model}</TableCell>
+                      <TableCell>{vehicle.activeEmployeeName ?? "-"}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="icon" onClick={() => removeVehicle(vehicle.id)}><Trash2 className="h-4 w-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {!vehicles.length && <EmptyState title="Nenhum veículo" description="Cadastre placa e modelo para controlar uso e cargas." />}
+          </CardContent>
+        </Card>
+
+        <Card className="border-[#dce3df] shadow-sm">
+          <CardHeader><CardTitle className="flex items-center gap-2"><UserRound className="h-5 w-5" /> Funcionários</CardTitle></CardHeader>
+          <CardContent className="space-y-5">
+            <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={submitEmployee}>
+              <Input placeholder="Nome" value={employeeName} onChange={(event) => setEmployeeName(event.target.value)} />
+              <Input placeholder="Telefone" value={employeePhone} onChange={(event) => setEmployeePhone(event.target.value)} />
+              <Button className="bg-[#0f2b2e] hover:bg-[#153a3d]">Cadastrar</Button>
+              <Input className="sm:col-span-3" placeholder="Função" value={employeeRole} onChange={(event) => setEmployeeRole(event.target.value)} />
+            </form>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Telefone</TableHead><TableHead>Função</TableHead><TableHead /></TableRow></TableHeader>
+                <TableBody>
+                  {employees.map((employee) => (
+                    <TableRow key={employee.id}>
+                      <TableCell className="font-medium">{employee.name}</TableCell>
+                      <TableCell>{employee.phone || "-"}</TableCell>
+                      <TableCell>{employee.role || "-"}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="icon" onClick={() => removeEmployee(employee.id)}><Trash2 className="h-4 w-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {!employees.length && <EmptyState title="Nenhum funcionário" description="Cadastre quem opera, dirige ou acompanha as entregas." />}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card className="border-[#dce3df] shadow-sm">
+          <CardHeader><CardTitle>Associar veículo</CardTitle></CardHeader>
+          <CardContent>
+            <form className="space-y-4" onSubmit={submitAssignment}>
+              <Select value={assignmentVehicleId} onValueChange={setAssignmentVehicleId}>
+                <SelectTrigger><SelectValue placeholder="Veículo" /></SelectTrigger>
+                <SelectContent>{vehicles.map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plate} - {vehicle.model}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={assignmentEmployeeId} onValueChange={setAssignmentEmployeeId}>
+                <SelectTrigger><SelectValue placeholder="Funcionário" /></SelectTrigger>
+                <SelectContent>{employees.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.name}</SelectItem>)}</SelectContent>
+              </Select>
+              <Button className="h-11 w-full bg-[#0f2b2e] hover:bg-[#153a3d]">Associar uso atual</Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card className="border-[#dce3df] shadow-sm">
+          <CardHeader><CardTitle>Carga no veículo</CardTitle></CardHeader>
+          <CardContent className="space-y-5">
+            <form className="grid gap-3 md:grid-cols-2" onSubmit={submitLoad}>
+              <Select value={loadVehicleId} onValueChange={setLoadVehicleId}>
+                <SelectTrigger><SelectValue placeholder="Veículo" /></SelectTrigger>
+                <SelectContent>{vehicles.map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plate} - {vehicle.model}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={loadEmployeeId} onValueChange={setLoadEmployeeId}>
+                <SelectTrigger><SelectValue placeholder="Funcionário" /></SelectTrigger>
+                <SelectContent>{employees.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.name}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={loadSaleId} onValueChange={setLoadSaleId}>
+                <SelectTrigger><SelectValue placeholder="Comprovante opcional" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem comprovante</SelectItem>
+                  {sales.map((sale) => <SelectItem key={sale.id} value={sale.id}>{sale.number} - {sale.invoiceInfo.client}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button className="bg-[#0f2b2e] hover:bg-[#153a3d]">Registrar carga</Button>
+              <Textarea className="md:col-span-2" placeholder="Descrição da carga, rota ou observação" value={loadDescription} onChange={(event) => setLoadDescription(event.target.value)} />
+            </form>
+
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Veículo</TableHead><TableHead>Funcionário</TableHead><TableHead>Comprovante</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+                <TableBody>
+                  {vehicleLoads.slice(0, 8).map((load) => (
+                    <TableRow key={load.id}>
+                      <TableCell className="font-medium">{load.vehiclePlate}</TableCell>
+                      <TableCell>{load.employeeName}</TableCell>
+                      <TableCell>{load.saleNumber ?? "-"}</TableCell>
+                      <TableCell><Badge variant={load.status === "aberta" ? "secondary" : "outline"}>{load.status}</Badge></TableCell>
+                      <TableCell className="text-right">
+                        {load.status === "aberta" && <Button variant="outline" onClick={() => closeVehicleLoad(load.id)}>Finalizar</Button>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {!openLoads.length && <EmptyState title="Nenhuma carga aberta" description="Registre uma carga para acompanhar o uso do veículo." />}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
 

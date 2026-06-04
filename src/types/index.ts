@@ -49,6 +49,9 @@ export type InvoiceInfo = {
   phone: string;
   address: string;
   client: string;
+  clientDocument?: string;
+  clientPhone?: string;
+  clientAddress?: string;
   observations: string;
 };
 
@@ -65,6 +68,10 @@ export type Sale = {
   items: SaleItem[];
   total: number;
   invoiceInfo: InvoiceInfo;
+  vehicleId?: string;
+  vehiclePlate?: string;
+  employeeId?: string;
+  employeeName?: string;
   finalized: boolean;
   createdAt: string;
 };
@@ -72,4 +79,41 @@ export type Sale = {
 export type AppUser = {
   uid: string;
   email: string | null;
+};
+
+export type Vehicle = {
+  id: string;
+  plate: string;
+  model: string;
+  notes?: string;
+  activeEmployeeId?: string;
+  activeEmployeeName?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Employee = {
+  id: string;
+  name: string;
+  phone: string;
+  role: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type VehicleLoadStatus = "aberta" | "finalizada";
+
+export type VehicleLoad = {
+  id: string;
+  vehicleId: string;
+  vehiclePlate: string;
+  employeeId: string;
+  employeeName: string;
+  saleId?: string;
+  saleNumber?: string;
+  description: string;
+  status: VehicleLoadStatus;
+  createdAt: string;
+  closedAt?: string;
 };

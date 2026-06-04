@@ -12,6 +12,7 @@ import {
   Settings,
   ShoppingCart,
   LogOut,
+  Truck,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export type ViewId =
   | "estoque"
   | "vendas"
   | "notas"
+  | "operacao"
   | "historico"
   | "configuracoes";
 
@@ -33,7 +35,8 @@ const navItems = [
   { id: "produtos", label: "Produtos", icon: Package },
   { id: "estoque", label: "Estoque", icon: Boxes },
   { id: "vendas", label: "Vendas", icon: ShoppingCart },
-  { id: "notas", label: "Notas", icon: FileText },
+  { id: "notas", label: "Comprovantes", icon: FileText },
+  { id: "operacao", label: "Operação", icon: Truck },
   { id: "historico", label: "Histórico", icon: History },
   { id: "configuracoes", label: "Configurações", icon: Settings },
 ] as const;
@@ -146,4 +149,3 @@ export function AppShell(props: AppShellProps) {
     </div>
   );
 }
-

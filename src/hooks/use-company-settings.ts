@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import {
+  saveCompanySettings as saveFirestoreCompanySettings,
+  subscribeCompanySettings,
+} from "@/services/atlas-repository";
 import type { CompanySettings } from "@/types";
 
 const settingsKey = "atlas-company-settings";
@@ -35,14 +39,21 @@ export function useCompanySettings() {
 
     loadSettings();
 
+    const unsubscribe = subscribeCompanySettings((settings) => {
+      setCompanySettings({ ...defaultCompanySettings, ...settings });
+      window.localStorage.setItem(settingsKey, JSON.stringify(settings));
+    });
+
     return () => {
       active = false;
+      unsubscribe?.();
     };
   }, []);
 
-  function saveCompanySettings(settings: CompanySettings) {
+  async function saveCompanySettings(settings: CompanySettings) {
     setCompanySettings(settings);
     window.localStorage.setItem(settingsKey, JSON.stringify(settings));
+    await saveFirestoreCompanySettings(settings);
     toast.success("Dados da empresa salvos.");
   }
 

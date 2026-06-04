@@ -23,6 +23,10 @@ Sistema web interno para controle de estoque, vendas e notas de frutas e verdura
 - Página limpa de impressão.
 - Histórico de entradas, saídas, ajustes e vendas.
 - Configurações de dados da empresa para sair na nota.
+- Cadastro de veículos por placa e modelo.
+- Cadastro de funcionários.
+- Associação de veículo em uso por funcionário.
+- Registro de carga/romaneio vinculado a veículo, funcionário e comprovante.
 
 ## Rodar localmente
 
@@ -88,6 +92,22 @@ service cloud.firestore {
     }
 
     match /stock_movements/{docId} {
+      allow read, write: if signedIn();
+    }
+
+    match /company_settings/{docId} {
+      allow read, write: if signedIn();
+    }
+
+    match /vehicles/{docId} {
+      allow read, write: if signedIn();
+    }
+
+    match /employees/{docId} {
+      allow read, write: if signedIn();
+    }
+
+    match /vehicle_loads/{docId} {
       allow read, write: if signedIn();
     }
 

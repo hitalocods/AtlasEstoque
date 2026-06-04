@@ -7,6 +7,7 @@ import {
   DashboardPage,
   HistoryPage,
   NotesPage,
+  OperationPage,
   ProductsPage,
   SalesPage,
   SettingsPage,
@@ -52,6 +53,7 @@ export function AtlasApp() {
       {activeView === "estoque" && <StockPage {...store} />}
       {activeView === "vendas" && <SalesPage {...store} {...company} />}
       {activeView === "notas" && <NotesPage {...store} />}
+      {activeView === "operacao" && <OperationPage {...store} />}
       {activeView === "historico" && <HistoryPage {...store} />}
       {activeView === "configuracoes" && <SettingsPage {...store} {...company} />}
     </AppShell>
